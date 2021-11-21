@@ -16,16 +16,17 @@
         app:layout_constraintTop_toTopOf="parent" />
 
 
-    <TextView
-        android:id="@+id/textView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:minLines="10"
-        android:singleLine="false" />
-
     <Button
         android:id="@+id/takeFoto"
         android:layout_width="match_parent"
         android:layout_height="47dp"
         android:text="takeFoto" />
+
+    <TextView
+        android:id="@+id/textView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:minLines="10"
+        android:singleLine="false"
+        android:textColor="@color/purple_700" />
 </LinearLayout>

@@ -4,6 +4,8 @@ import androidx.camera.core.*
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.res.Resources
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -18,6 +20,7 @@ import com.example.mlkitsample.databinding.FragmentFirstBinding
 
 import android.util.Size
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 
 import androidx.camera.view.PreviewView
@@ -25,6 +28,12 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.lifecycle.LifecycleOwner
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.mlkit.vision.barcode.Barcode
+import com.google.mlkit.vision.barcode.BarcodeScanner
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
+import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -35,12 +44,13 @@ class FirstFragment : Fragment() {
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private lateinit var surfaceViewCamera: PreviewView
     private lateinit var takePhoto: Button
+    private lateinit var textViewOut: TextView
     private lateinit var imageCapture: ImageCapture
     private lateinit var cameraExecutor: ExecutorService
     private val displayWidth = Resources.getSystem().displayMetrics.widthPixels
     private val displayHeight = Resources.getSystem().displayMetrics.heightPixels
-    private lateinit var cameraProviderFuture : ListenableFuture<ProcessCameraProvider>
-
+    private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
+    private lateinit var scanner: BarcodeScanner
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -49,13 +59,14 @@ class FirstFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_first, container, false)
         surfaceViewCamera = view.findViewById(R.id.surfaceViewCamera)
         takePhoto = view.findViewById(R.id.takeFoto)
+        textViewOut=  view.findViewById(R.id.textView)
         return view
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         if (cameraPermissionWasGranted()) {
-        //    buildControls()
+            //    buildControls()
             surfaceViewCamera.post { setupCamera() }
         } else {
             askForCameraPermission()
@@ -64,6 +75,7 @@ class FirstFragment : Fragment() {
         imageCapture = ImageCapture.Builder()
             .setTargetResolution(Size(displayWidth, displayHeight))
             .build()
+        buildControls()
         addButtonTakePhoto()
     }
 
@@ -76,18 +88,22 @@ class FirstFragment : Fragment() {
 
     }
 
-    private fun bindPreview(cameraProvider : ProcessCameraProvider) {
+    private fun bindPreview(cameraProvider: ProcessCameraProvider) {
 
-        // val screenAspectRatio = Rational(displayWidth, displayHeight)
-        val preview : Preview = Preview.Builder()
+        val preview: Preview = Preview.Builder()
             .setTargetResolution(Size(displayWidth, displayHeight))
             .build()
-        val cameraSelector : CameraSelector = CameraSelector.Builder()
+        val cameraSelector: CameraSelector = CameraSelector.Builder()
             .requireLensFacing(lensFacing)
             .build()
         preview.setSurfaceProvider(surfaceViewCamera.surfaceProvider)
 
-        cameraProvider.bindToLifecycle(this as LifecycleOwner, cameraSelector,imageCapture,preview)
+        cameraProvider.bindToLifecycle(
+            this as LifecycleOwner,
+            cameraSelector,
+            imageCapture,
+            preview
+        )
     }
 
     private fun addButtonTakePhoto() {
@@ -95,13 +111,12 @@ class FirstFragment : Fragment() {
         takePhoto.setOnClickListener {
             imageCapture.takePicture(cameraExecutor,
                 object : ImageCapture.OnImageCapturedCallback() {
-
                     override fun onCaptureSuccess(image: ImageProxy) {
                         super.onCaptureSuccess(image)
-                        Handler(Looper.getMainLooper()).post {
-                            Toast.makeText(requireContext(), "Сфотал!", Toast.LENGTH_SHORT).show()
-                        }
+                        recognizeBarcode(image)
+                        image.close()
                     }
+
                     override fun onError(exception: ImageCaptureException) {
                         super.onError(exception)
                         val msg = exception.localizedMessage
@@ -114,67 +129,52 @@ class FirstFragment : Fragment() {
     }
 
 
+    private fun buildControls() {
+        val options = BarcodeScannerOptions.Builder()
+            .setBarcodeFormats(
+                Barcode.FORMAT_ALL_FORMATS
+            )
+            .build()
+        scanner = BarcodeScanning.getClient(options)
+    }
+
+    private fun recognizeBarcode(image: ImageProxy) {
+        val bitmap = imageProxyToBitmap(image)
+        val inputImg = InputImage.fromBitmap(bitmap, image.imageInfo.rotationDegrees)
+        val result = scanner.process(inputImg)
+            .addOnSuccessListener { barcodes ->
+                for (barcode in barcodes) {
+                    val bounds = barcode.boundingBox
+                    val corners = barcode.cornerPoints
+                    val barcodeNum = barcode.displayValue
+                    Handler(Looper.getMainLooper()).post {
+                        textViewOut.text=barcodeNum
+                    }
+                }
+            }
+            .addOnFailureListener {e ->
+
+                val msg = "Ошибка распознования:" + e.localizedMessage
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+                }
+
+            }
 
 
+    }
 
 
+    private fun imageProxyToBitmap(image: ImageProxy): Bitmap {
+        val buffer: ByteBuffer = image.planes[0].buffer
+        val bytes = ByteArray(buffer.remaining())
+        buffer.get(bytes)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//    private fun buildControls() {
-//        val options = BarcodeScannerOptions.Builder()
-//            .setBarcodeFormats(
-//                Barcode.FORMAT_EAN_13
-//            )
-//            .build()
-//        detector = BarcodeScanning.getClient(options)
-//    }
 //
 
 
-
-       // cameraProvider.bindToLifecycle(this as LifecycleOwner, cameraSelector, , preview)
-
-//        val imageAnalysis = ImageAnalysis.Builder()
-//            .setTargetResolution(screenSize)
-//            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-//            .build()
-
-//        // Define options for barcode scanner
-//        val options = BarcodeScannerOptions.Builder()
-//            .setBarcodeFormats(
-//                Barcode.FORMAT_EAN_13,
-//                )
-//            .build()
-
-//        imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(requireContext()), ImageAnalysis.Analyzer { imageProxy ->
-//            val rotationDegrees = imageProxy.imageInfo.rotationDegrees
-//
-//            // Initiate barcode scanner
-//            val scanner = BarcodeScanning.getClient(options)
-//
-//            // insert your code here.
-//            @androidx.camera.core.ExperimentalGetImage
-//            val mediaImage = imageProxy.image
-//
-//            @androidx.camera.core.ExperimentalGetImage
-//            if (mediaImage != null) {
-//                val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-//
 //                // Pass image to an ML Kit Vision API
 //                @androidx.camera.core.ExperimentalGetImage
 //                val result = scanner.process(image)
@@ -216,18 +216,7 @@ class FirstFragment : Fragment() {
 //
 //        })
 
- //       cameraProvider.bindToLifecycle(this as LifecycleOwner, cameraSelector, imageAnalysis, preview)
-
-
-
-
-
-
-
-
-
-
-
+    //       cameraProvider.bindToLifecycle(this as LifecycleOwner, cameraSelector, imageAnalysis, preview)
 
 
 //        val detectionTaskCallback: DetectionTaskCallback<List<Barcode>> =
@@ -237,77 +226,8 @@ class FirstFragment : Fragment() {
 //                    .addOnFailureListener { e -> onDetectionTaskFailure(e) }
 //            }
 //
-//        val builder: CameraSourceConfig.Builder = CameraSourceConfig.Builder(
-//            requireActivity().applicationContext, detector, detectionTaskCallback
-//        )
-//            .setFacing(lensFacing)
-////        targetResolution = PreferenceUtils.getCameraXTargetResolution(
-////            requireActivity().applicationContext,
-////            lensFacing
-////        )
-//
-//        builder.setRequestedPreviewSize(targetResolution!!.width, targetResolution!!.height)
-//
-//        cameraXSource = CameraXSource(builder.build(), surfaceViewCamera)
-//        needUpdateGraphicOverlayImageSourceInfo = true
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//
-//
-//    private fun buildControls() {
-//        val options = BarcodeScannerOptions.Builder()
-//            .setBarcodeFormats(
-//                Barcode.EAN_13)
-//            .build()
-//
-//
-//        barcodeDetector = BarcodeDetector.Builder(this@MainActivity).build()
-//
-//        barcodeDetector.setProcessor(barcodeProcessor)
-//
-//        cameraSource = CameraSource.Builder(this@MainActivity, barcodeDetector)
-//            .setAutoFocusEnabled(true)
-//            .build()
-//        cameraSurfaceView.holder.addCallback(surfaceCallback)
-//    }
-
-
-//    override fun receiveDetections(detections: Detector.Detections<Barcode>?) {
-//        if (!receivedCode && detections != null && detections.detectedItems.isNotEmpty()) {
-//            //  receivedCode = true
-//            val codes: SparseArray<Barcode> = detections.detectedItems
-//            var stringCode =' '.toString()
-//            var stringkey =0
-//
-//            for (i in 0 until codes.size()) {
-//                stringkey += codes.keyAt(i)
-//                // get the object by the key.
-//                stringCode += codes.get(stringkey).displayValue+ ' '
-//            }
-//
-//            TextViewBar.text = stringCode //+ '/' + stringkey.toString()
-//
-//        } else {
-//            Log.v("BARCODE_PROCESSOR", "Code not found")
-//        }
-//    }
 
 
     override fun onDestroyView() {
@@ -329,8 +249,6 @@ class FirstFragment : Fragment() {
             requestCodeCameraPermission
         )
     }
-
-
 
 
 }
