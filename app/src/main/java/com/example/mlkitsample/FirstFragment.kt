@@ -19,9 +19,7 @@ import androidx.fragment.app.Fragment
 import com.example.mlkitsample.databinding.FragmentFirstBinding
 
 import android.util.Size
-import android.widget.Button
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 
 import androidx.camera.view.PreviewView
 import androidx.camera.core.ImageCapture
@@ -45,12 +43,15 @@ class FirstFragment : Fragment() {
     private lateinit var surfaceViewCamera: PreviewView
     private lateinit var takePhoto: Button
     private lateinit var textViewOut: TextView
+    private lateinit var imageViewPreview: ImageView
     private lateinit var imageCapture: ImageCapture
     private lateinit var cameraExecutor: ExecutorService
     private val displayWidth = Resources.getSystem().displayMetrics.widthPixels
     private val displayHeight = Resources.getSystem().displayMetrics.heightPixels
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
     private lateinit var scanner: BarcodeScanner
+    private lateinit var cameraProvider: ProcessCameraProvider
+    private lateinit var preview: Preview
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -59,7 +60,9 @@ class FirstFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_first, container, false)
         surfaceViewCamera = view.findViewById(R.id.surfaceViewCamera)
         takePhoto = view.findViewById(R.id.takeFoto)
-        textViewOut=  view.findViewById(R.id.textView)
+        textViewOut = view.findViewById(R.id.textView)
+        imageViewPreview = view.findViewById(R.id.imageViewPreview)
+        imageViewPreview.alpha = "0.0".toFloat()
         return view
     }
 
@@ -82,7 +85,7 @@ class FirstFragment : Fragment() {
     private fun setupCamera() {
         cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
         cameraProviderFuture.addListener(Runnable {
-            val cameraProvider = cameraProviderFuture.get()
+            cameraProvider = cameraProviderFuture.get()
             bindPreview(cameraProvider)
         }, ContextCompat.getMainExecutor(requireContext()))
 
@@ -90,7 +93,7 @@ class FirstFragment : Fragment() {
 
     private fun bindPreview(cameraProvider: ProcessCameraProvider) {
 
-        val preview: Preview = Preview.Builder()
+        preview = Preview.Builder()
             .setTargetResolution(Size(displayWidth, displayHeight))
             .build()
         val cameraSelector: CameraSelector = CameraSelector.Builder()
@@ -109,25 +112,31 @@ class FirstFragment : Fragment() {
     private fun addButtonTakePhoto() {
 
         takePhoto.setOnClickListener {
-            imageCapture.takePicture(cameraExecutor,
-                object : ImageCapture.OnImageCapturedCallback() {
-                    override fun onCaptureSuccess(image: ImageProxy) {
-                        super.onCaptureSuccess(image)
-                        recognizeBarcode(image)
-                        image.close()
-                    }
-
-                    override fun onError(exception: ImageCaptureException) {
-                        super.onError(exception)
-                        val msg = exception.localizedMessage
-                        Handler(Looper.getMainLooper()).post {
-                            Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                })
+           when(takePhoto.text){
+            "Назад"-> buttonBack()
+            "Фото" -> startRecognize()
+           }
         }
     }
 
+    private fun startRecognize() {
+        imageCapture.takePicture(cameraExecutor,
+            object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    super.onCaptureSuccess(image)
+                    recognizeBarcode(image)
+                    image.close()
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    super.onError(exception)
+                    val msg = exception.localizedMessage
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            })
+    }
 
     private fun buildControls() {
         val options = BarcodeScannerOptions.Builder()
@@ -138,32 +147,54 @@ class FirstFragment : Fragment() {
         scanner = BarcodeScanning.getClient(options)
     }
 
+    private fun setImageToView(image: Bitmap) {
+        imageViewPreview.setImageBitmap(image)
+        imageViewPreview.alpha = "1.0".toFloat()
+        cameraProvider.unbindAll()
+        takePhoto.text = "Назад"
+    }
+
     private fun recognizeBarcode(image: ImageProxy) {
         val bitmap = imageProxyToBitmap(image)
         val inputImg = InputImage.fromBitmap(bitmap, image.imageInfo.rotationDegrees)
-        val result = scanner.process(inputImg)
+        var msg = "Штрихкоды: "
+        scanner.process(inputImg)
             .addOnSuccessListener { barcodes ->
                 for (barcode in barcodes) {
                     val bounds = barcode.boundingBox
                     val corners = barcode.cornerPoints
-                    val barcodeNum = barcode.displayValue
-                    Handler(Looper.getMainLooper()).post {
-                        textViewOut.text=barcodeNum
-                    }
+                    msg += barcode.displayValue.toString() + " "
+                }
+                setImageToView(bitmap)
+                Handler(Looper.getMainLooper()).post {
+                    textViewOut.text = msg
                 }
             }
-            .addOnFailureListener {e ->
-
+            .addOnFailureListener { e ->
                 val msg = "Ошибка распознования:" + e.localizedMessage
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
                 }
-
             }
+    }
+
+    private fun addImageView() {
+        val imageView = ImageView(requireContext())
+        imageView.layoutParams = LinearLayout.LayoutParams(160, 160) // value is in pixels
+
+        val imgResId = R.drawable.ok
+        var resId = imgResId
+        imageView.setImageResource(imgResId)
 
 
     }
 
+    private fun buttonBack(){
+        imageViewPreview.alpha = "0.0".toFloat()
+        takePhoto.text = "Фото"
+        textViewOut.text = ""
+        setupCamera()
+    }
 
     private fun imageProxyToBitmap(image: ImageProxy): Bitmap {
         val buffer: ByteBuffer = image.planes[0].buffer
@@ -172,76 +203,16 @@ class FirstFragment : Fragment() {
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }
 
-//
-
-
-//                // Pass image to an ML Kit Vision API
-//                @androidx.camera.core.ExperimentalGetImage
-//                val result = scanner.process(image)
-//                    .addOnSuccessListener { barcodes ->
-//                        // Task completed successfully
-//                        Log.i("Status", "In success listener")
-//                        for (barcode in barcodes) {
-//                            val bounds = barcode.boundingBox
-//                            val corners = barcode.cornerPoints
-//
-//                            val rawValue = barcode.rawValue
-//                            Log.i("QR code", rawValue.toString())
-//
-//                            val valueType = barcode.valueType
-//                            // See API reference for complete list of supported types
-//                            when (valueType) {
-//                                Barcode.TYPE_WIFI -> {
-//                                    val ssid = barcode.wifi!!.ssid
-//                                    val password = barcode.wifi!!.password
-//                                    val type = barcode.wifi!!.encryptionType
-//                                }
-//                                Barcode.TYPE_URL -> {
-//                                    val title = barcode.url!!.title
-//                                    val url = barcode.url!!.url
-//                                }
-//                            }
-//                        }
-//                    }
-//                    .addOnFailureListener {
-//                        // Task failed with an exception
-//                        Log.i("Status", "In failure listener")
-//                    }
-//                    .addOnCompleteListener{
-//                        // Task failed with an exception
-//                        Log.i("Status", "In on complete listener")
-//                        imageProxy.close()
-//                    }
-//            }
-//
-//        })
-
-    //       cameraProvider.bindToLifecycle(this as LifecycleOwner, cameraSelector, imageAnalysis, preview)
-
-
-//        val detectionTaskCallback: DetectionTaskCallback<List<Barcode>> =
-//            DetectionTaskCallback<List<Barcode>> { detectionTask ->
-//                detectionTask
-//                    .addOnSuccessListener { results -> onDetectionTaskSuccess(results) }
-//                    .addOnFailureListener { e -> onDetectionTaskFailure(e) }
-//            }
-//
-
-
-
-
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
     }
-
 
     private fun cameraPermissionWasGranted() =
         ContextCompat.checkSelfPermission(
             requireActivity(),
             Manifest.permission.CAMERA
         ) == PackageManager.PERMISSION_GRANTED
-
     private fun askForCameraPermission() {
         ActivityCompat.requestPermissions(
             requireActivity(),
