@@ -4,15 +4,16 @@ import androidx.camera.core.*
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+
 import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.graphics.*
-import android.graphics.drawable.ShapeDrawable
-import android.graphics.drawable.shapes.RectShape
+
+import android.hardware.camera2.CameraManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Rational
+
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,11 +21,9 @@ import androidx.camera.core.CameraSelector
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import android.util.Size
-import android.view.Display
+
 import android.view.Surface.*
-import android.view.View.MeasureSpec
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+
 import android.widget.*
 import androidx.camera.view.PreviewView
 import androidx.camera.core.ImageCapture
@@ -42,8 +41,15 @@ import com.google.mlkit.vision.common.InputImage
 import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import android.view.ViewTreeObserver
+
 import android.view.ViewTreeObserver.OnGlobalLayoutListener
+import androidx.camera.core.ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY
+import androidx.core.content.ContextCompat.getSystemService
+import android.hardware.SensorManager
+
+
+
+
 
 
 class FirstFragment : Fragment() {
@@ -54,66 +60,83 @@ class FirstFragment : Fragment() {
     private lateinit var takePhoto: Button
     private lateinit var textViewOut: TextView
     private lateinit var imageViewPreview: ImageView
-    private lateinit var imageCapture: ImageCapture
+    private lateinit var imageCaptureBuilder: ImageCapture
     private lateinit var cameraExecutor: ExecutorService
-    private val displayWidth = Resources.getSystem().displayMetrics.widthPixels
-    private val displayHeight = Resources.getSystem().displayMetrics.heightPixels
+    private lateinit var globalLayout: LinearLayout
+    private lateinit var mainFrame: FrameLayout
+
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
     private lateinit var scanner: BarcodeScanner
     private lateinit var cameraProvider: ProcessCameraProvider
     private lateinit var preview: Preview
-    private lateinit var mainFraime: ConstraintLayout
+    private lateinit var frameDraw: ConstraintLayout
     private var widthSize = 0
     private var heightSize = 0
-
+    private var bottomOffset = 0
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
+        savedInstanceState: Bundle?,
     ): View {
-        _binding = FragmentFirstBinding.inflate(inflater,container,false)
+        _binding = FragmentFirstBinding.inflate(inflater, container, false)
         imageViewPreview = _binding!!.imageViewPreview
         imageViewPreview.alpha = 0.0f
         takePhoto = _binding!!.takeFoto
         textViewOut = _binding!!.textView
         surfaceViewCamera = _binding!!.surfaceViewCamera
-        mainFraime = _binding!!.mainFraime
 
+        mainFrame = _binding!!.mainFrame
+        globalLayout = _binding!!.globalLayout
+        frameDraw = _binding!!.frameDraw
 
         return _binding!!.root
     }
 
 
-
+    @SuppressLint("RestrictedApi")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         if (cameraPermissionWasGranted()) {
 
-            imageViewPreview.viewTreeObserver.addOnGlobalLayoutListener(object : OnGlobalLayoutListener {
+            textViewOut.viewTreeObserver.addOnGlobalLayoutListener(object : OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
                     imageViewPreview.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                    heightSize=   mainFraime.height //height is ready 1788
-                    widthSize= mainFraime.width ///1080
+                    heightSize = mainFrame.height //height is ready 1788
+                    widthSize = mainFrame.width ///1080
+                    bottomOffset = (globalLayout.bottom - mainFrame.bottom)*2///не совсем это верно
 
+                    imageViewPreview.imageMatrix
                 }
             })
-
 
             surfaceViewCamera.post { setupCamera() }
         } else {
             askForCameraPermission()
         }
         cameraExecutor = Executors.newSingleThreadExecutor()
-        imageCapture = ImageCapture.Builder()
-            .setTargetResolution(Size(displayWidth, displayHeight)) ///2120  1080
-
-            .build()
 
         buildControls()
         addButtonTakePhoto()
-    //    imageCapture.mCropAspectRatio    27/53   mNumerator/mDenominator
-
     }
 
+
+
+
+
+//    var streamConfigurationMapValues = arrayOf<Any>(
+//        configurations,
+//        cameraCharacteristics.get(getFiled("SCALER_AVAILABLE_MIN_FRAME_DURATIONS")),
+//        cameraCharacteristics.get(getFiled("SCALER_AVAILABLE_STALL_DURATIONS")),
+//        cameraCharacteristics.get(getFiled("DEPTH_AVAILABLE_DEPTH_STREAM_CONFIGURATIONS")),
+//        cameraCharacteristics.get(getFiled("DEPTH_AVAILABLE_DEPTH_MIN_FRAME_DURATIONS")),
+//        cameraCharacteristics.get(getFiled("DEPTH_AVAILABLE_DEPTH_STALL_DURATIONS")),
+//        cameraCharacteristics.get(getFiled("CONTROL_AVAILABLE_HIGH_SPEED_VIDEO_CONFIGURATIONS")),
+//        cameraCharacteristics.get(getFiled("SCALER_AVAILABLE_INPUT_OUTPUT_FORMATS_MAP")),
+//        listHighResolution
+//    )
+
+
+
+    @SuppressLint("ServiceCast")
     private fun setupCamera() {
         cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
         cameraProviderFuture.addListener(Runnable {
@@ -121,14 +144,29 @@ class FirstFragment : Fragment() {
             bindPreview(cameraProvider)
         }, ContextCompat.getMainExecutor(requireContext()))
 
+
+        imageCaptureBuilder = ImageCapture.Builder()
+            //.setTargetResolution(Size(displayWidth, displayHeight))
+            .setCaptureMode(CAPTURE_MODE_MAXIMIZE_QUALITY)
+
+            // .setTargetResolution(Size(10000, 10000)) ////2120  1080
+            .build()
+
+//       var cameraManager  = requireActivity().getSystemService(Context.CAMERA_SERVICE) as SensorManager
+//
+//        var  cameraIdList = cameraManager.getSensorList(1)
+//
+
     }
 
     private fun bindPreview(cameraProvider: ProcessCameraProvider) {
 
         preview = Preview.Builder()
-            .setTargetResolution(Size(displayWidth, displayHeight)) ///2120  1080
-           // .setTargetResolution(Size(widthSize, heightSize))
+            //.setTargetResolution(Size(displayWidth, displayHeight)) ///2120  1080
+            //.setTargetResolution(Size(widthSize, heightSize))
             .build()
+
+
         val cameraSelector: CameraSelector = CameraSelector.Builder()
             .requireLensFacing(lensFacing)
             .build()
@@ -137,7 +175,7 @@ class FirstFragment : Fragment() {
         cameraProvider.bindToLifecycle(
             this as LifecycleOwner,
             cameraSelector,
-            imageCapture,
+            imageCaptureBuilder,
             preview
         )
     }
@@ -145,21 +183,22 @@ class FirstFragment : Fragment() {
     private fun addButtonTakePhoto() {
 
         takePhoto.setOnClickListener {
-           when(takePhoto.text){
-            "Назад"-> buttonBack()
-            "Фото" -> startRecognize()
-           }
+            when (takePhoto.text) {
+                "Назад" -> buttonBack()
+                "Фото" -> startRecognize()
+            }
         }
     }
 
     private fun startRecognize() {
-        imageCapture.takePicture(cameraExecutor,
+        imageCaptureBuilder.takePicture(cameraExecutor,
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
                     super.onCaptureSuccess(image)
                     recognizeBarcode(image)
                     image.close()
                 }
+
                 override fun onError(exception: ImageCaptureException) {
                     super.onError(exception)
                     val msg = exception.localizedMessage
@@ -173,17 +212,18 @@ class FirstFragment : Fragment() {
     private fun buildControls() {
         val options = BarcodeScannerOptions.Builder()
             .setBarcodeFormats(
-                Barcode.FORMAT_ALL_FORMATS
+                Barcode.FORMAT_EAN_13,
+                Barcode.FORMAT_CODE_39,
+                Barcode.FORMAT_CODE_93,
+                Barcode.FORMAT_CODE_128
             )
             .build()
         scanner = BarcodeScanning.getClient(options)
     }
 
-    private fun setImageToView(image: Bitmap,rotationDegrees: Int) {
-        val  msg = image.height.toString() + " / " +image.width.toString() //1080/2160   image.mDensity 440
-        //val inf = image.imageInfo
-
-
+    private fun setImageToView(image: Bitmap, rotationDegrees: Int) {
+        val msg =
+            image.height.toString() + " / " + image.width.toString() //1080/2160   image.mDensity 440
 
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
@@ -191,41 +231,53 @@ class FirstFragment : Fragment() {
 
         imageViewPreview.setImageBitmap(image)
         imageViewPreview.adjustViewBounds = true
-
+        imageViewPreview.scaleType = ImageView.ScaleType.FIT_END
         //  imageViewPreview.rotation = rotationDegrees.toFloat()
         imageViewPreview.alpha = 1.0f
-        surfaceViewCamera.alpha =0.0f
+        surfaceViewCamera.alpha = 0.0f
         //imageViewPreview.baseline
         cameraProvider.unbindAll()
         takePhoto.text = "Назад"
 
-//imageViewPreview.mMeasuredHeight 1788
-        //imageViewPreview.mMeasuredWidth 1080
-     //   imageViewPreview.mTempDst 0,624,1080,1164  (0,0,1080,540
-        //   imageViewPreview.mTempSrc  0,0,2160,1080
+
     }
 
+    private fun countration(width: Int, height: Int): Float {
+        val kWidth = widthSize.toFloat() / width.toFloat()
+        val kHeight =  heightSize.toFloat() / height.toFloat()
+        return if (kWidth > kHeight) {
+            kHeight
+        } else {
+            kWidth
+        }
+    }
+
+
     private fun recognizeBarcode(image: ImageProxy) {
-        val bitmap = imageProxyToBitmap(image,image.imageInfo.rotationDegrees)
-        val inputImg = InputImage.fromBitmap(bitmap,0)
+        val bitmap = imageProxyToBitmap(image, image.imageInfo.rotationDegrees)
+        val ratiom = countration(bitmap.width, bitmap.height)
+        val inputImg = InputImage.fromBitmap(bitmap, 0)
+        var i = 0
         var msg = "Штрихкоды: "
+
+
         val arrayBounds: MutableList<Rect> = ArrayList()
         val arrayCorners: MutableList<Array<Point>> = ArrayList()
-        val rationX = heightSize.toFloat() / image.height.toFloat()
-        val rationY = widthSize.toFloat()  / image.width.toFloat()
+      //  val rationX = ratiom
+      //  val rationY = ratiom
         scanner.process(inputImg)
             .addOnSuccessListener { barcodes ->
                 for (barcode in barcodes) {
                     val bounds = barcode.boundingBox
                     val corners = barcode.cornerPoints
-                    msg += barcode.displayValue!!.toString() + " "
+                    msg += barcode.displayValue!!.toString() //+ "{" + corners[0].x + "/" + corners[0].y + "}" + "{" + corners[1].x + "/" + corners[1].y + "}" + "{" + corners[2].x + "/" + corners[2].y + "}" + "{" + corners[3].x + "/" + corners[3].y + "}, "
                     arrayBounds.add(bounds!!)
                     arrayCorners.add(corners!!)
+                    i++
                 }
-                setImageToView(bitmap,image.imageInfo.rotationDegrees)
-
-
-                addOkImage(arrayBounds,arrayCorners,rationX,rationY)
+                setImageToView(bitmap, image.imageInfo.rotationDegrees)
+                addOkImage(arrayBounds, arrayCorners, ratiom, ratiom)
+                msg += " Всего: " + i
                 Handler(Looper.getMainLooper()).post {
                     textViewOut.text = msg
                 }
@@ -238,15 +290,28 @@ class FirstFragment : Fragment() {
             }
     }
 
-    private fun addOkImage(arrayBounds: MutableList<Rect>,arrayCorners: MutableList<Array<Point>>,rationX:Float,rationY:Float) {
+    private fun addOkImage(
+        arrayBounds: MutableList<Rect>,
+        arrayCorners: MutableList<Array<Point>>, rationX: Float, rationY: Float,
+    ) {
+
+        val offY = bottomOffset.toFloat()
+        val offX = 0f
 
         for (newPic in arrayCorners) {
-            mainFraime.addView(Rectangle(requireContext(),newPic,rationX,rationY))
+            frameDraw.addView(Rectangle(requireContext(), newPic, rationX, rationY, offX, offY))
         }
 
     }
 
-    private class Rectangle(context: Context,val rect:Array<Point>,val ratX:Float, val ratY: Float) : View(context) {
+    private class Rectangle(
+        context: Context,
+        val rect: Array<Point>,
+        val ratX: Float,
+        val ratY: Float,
+        val offX: Float,
+        val offY: Float,
+    ) : View(context) {
 
         var paint = Paint()
 
@@ -254,41 +319,58 @@ class FirstFragment : Fragment() {
         override fun onDraw(canvas: Canvas) {
             paint.color = Color.GREEN
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth =10f
+            paint.strokeWidth = 10f
 
-            for( i in 0..2)
-            {
-                canvas.drawLine(rect[i].x.toFloat(),rect[i].y.toFloat() ,rect[i+1].x.toFloat(),rect[i+1].y.toFloat(),paint)
-            }
-            canvas.drawLine(rect[3].x.toFloat(),rect[3].y.toFloat() ,rect[0].x.toFloat(),rect[0].y.toFloat(),paint)
+//            for( i in 0..2)
+//            {
+//                canvas.drawLine(rect[i].x.toFloat(),rect[i].y.toFloat() ,rect[i+1].x.toFloat(),rect[i+1].y.toFloat(),paint)
+//            }
+//            canvas.drawLine(rect[3].x.toFloat(),rect[3].y.toFloat() ,rect[0].x.toFloat(),rect[0].y.toFloat(),paint)
 
-//            canvas.drawLine(convert(0,ratX,ratY,1), convert(0,ratX,ratY,2), convert(1,ratX,ratY,1), convert(1,ratX,ratY,2), paint)
-//            canvas.drawLine(convert(1,ratX,ratY,1), convert(1,ratX,ratY,2), convert(2,ratX,ratY,1), convert(2,ratX,ratY,2), paint)
-//            canvas.drawLine(convert(2,ratX,ratY,1), convert(2,ratX,ratY,2), convert(3,ratX,ratY,1), convert(3,ratX,ratY,2), paint)
-//            canvas.drawLine(convert(3,ratX,ratY,1), convert(3,ratX,ratY,2), convert(0,ratX,ratY,1), convert(0,ratX,ratY,2), paint)
+            canvas.drawLine(convert(0, ratX, ratY, 1),
+                convert(0, ratX, ratY, 2),
+                convert(1, ratX, ratY, 1),
+                convert(1, ratX, ratY, 2),
+                paint)
+            canvas.drawLine(convert(1, ratX, ratY, 1),
+                convert(1, ratX, ratY, 2),
+                convert(2, ratX, ratY, 1),
+                convert(2, ratX, ratY, 2),
+                paint)
+            canvas.drawLine(convert(2, ratX, ratY, 1),
+                convert(2, ratX, ratY, 2),
+                convert(3, ratX, ratY, 1),
+                convert(3, ratX, ratY, 2),
+                paint)
+            canvas.drawLine(convert(3, ratX, ratY, 1),
+                convert(3, ratX, ratY, 2),
+                convert(0, ratX, ratY, 1),
+                convert(0, ratX, ratY, 2),
+                paint)
         }
+
         private fun convert(index: Int, ratx: Float, raty: Float, type: Int): Float {
 
             return when (type) {
-               1 ->
-                   rect[index].x.toFloat() * ratx
-                else -> rect[index].y.toFloat() * raty
+                1 ->
+                    rect[index].x.toFloat() * ratx + offX
+                else -> rect[index].y.toFloat() * raty + offY
             }
 
         }
     }
 
 
-    private fun buttonBack(){
+    private fun buttonBack() {
         imageViewPreview.alpha = 0.0f
         takePhoto.text = "Фото"
         textViewOut.text = ""
-        surfaceViewCamera.alpha =1.0f
-        mainFraime.removeAllViews()
+        surfaceViewCamera.alpha = 1.0f
+        frameDraw.removeAllViews()
         setupCamera()
     }
 
-    private fun imageProxyToBitmap(image: ImageProxy,rotationDegrees:Int): Bitmap {
+    private fun imageProxyToBitmap(image: ImageProxy, rotationDegrees: Int): Bitmap {
         val matrix = Matrix()
         matrix.postRotate(rotationDegrees.toFloat())
 
@@ -316,6 +398,24 @@ class FirstFragment : Fragment() {
             requestCodeCameraPermission
         )
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }
 
