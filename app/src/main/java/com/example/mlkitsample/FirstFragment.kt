@@ -58,9 +58,7 @@ import android.util.Log
 import android.util.Size
 import androidx.core.content.PackageManagerCompat
 import android.widget.ArrayAdapter
-
-
-
+import androidx.core.content.getSystemService
 
 
 class FirstFragment : Fragment() {
@@ -90,6 +88,8 @@ class FirstFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View {
+
+
         _binding = FragmentFirstBinding.inflate(inflater, container, false)
         imageViewPreview = _binding!!.imageViewPreview
         imageViewPreview.alpha = 0.0f
@@ -108,6 +108,10 @@ class FirstFragment : Fragment() {
     @SuppressLint("RestrictedApi")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+
+
+
         if (cameraPermissionWasGranted()) {
             textViewOut.viewTreeObserver.addOnGlobalLayoutListener(object : OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
@@ -139,8 +143,7 @@ class FirstFragment : Fragment() {
             .setCaptureMode(CAPTURE_MODE_MAXIMIZE_QUALITY)
             .build()
    val mCameraManager  = requireActivity().getSystemService(Context.CAMERA_SERVICE) as CameraManager
-
-        val resItems:MutableCollection<String> = ArrayList()
+        val resItems :  MutableList<String> = ArrayList()
 
         try {
             // Получение списка камер с устройства
@@ -175,8 +178,9 @@ class FirstFragment : Fragment() {
         }
 
 
-//        val adapter: ArrayAdapter<String> =
-//            ArrayAdapter<Any?>(this, R.layout.simple_spinner_item, countries)
+        spinnerItem.adapter = ArrayAdapter(requireContext(),  R.layout.drop_list_item , resItems)
+
+
 
     }
 
