@@ -1,13 +1,12 @@
 package com.example.mlkitsample
 
 import androidx.camera.core.*
-import android.Manifest
-import android.R
+import android.Manifest import android.R
 import android.annotation.SuppressLint
 import android.content.Context
 
 import android.content.pm.PackageManager
-import android.content.res.Resources
+
 import android.graphics.*
 
 import android.hardware.camera2.CameraManager
@@ -23,7 +22,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 
-import android.view.Surface.*
+
 
 import android.widget.*
 import androidx.camera.view.PreviewView
@@ -45,20 +44,19 @@ import java.util.concurrent.Executors
 
 import android.view.ViewTreeObserver.OnGlobalLayoutListener
 import androidx.camera.core.ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY
-import androidx.core.content.ContextCompat.getSystemService
-import android.hardware.SensorManager
-import androidx.core.content.PackageManagerCompat.LOG_TAG
+
+
 
 import android.hardware.camera2.CameraAccessException
 
 import android.hardware.camera2.CameraCharacteristics
 
-import android.hardware.camera2.params.StreamConfigurationMap
+
 import android.util.Log
 import android.util.Size
-import androidx.core.content.PackageManagerCompat
+
 import android.widget.ArrayAdapter
-import androidx.core.content.getSystemService
+
 
 
 class FirstFragment : Fragment() {
@@ -84,6 +82,11 @@ class FirstFragment : Fragment() {
     private var heightSize = 0
     private var bottomOffset = 0
     private val LOG_TAG="CameraXLog"
+    private var resolution: Size? =null
+    private var cameraSelector: CameraSelector?=null
+
+
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?,
@@ -101,6 +104,10 @@ class FirstFragment : Fragment() {
         globalLayout = _binding!!.globalLayout
         frameDraw = _binding!!.frameDraw
         spinnerItem=     _binding!!.spinnerItem
+
+        cameraSelector = CameraSelector.Builder()
+            .requireLensFacing(lensFacing)
+            .build()
         return _binding!!.root
     }
 
@@ -137,13 +144,13 @@ class FirstFragment : Fragment() {
             cameraProvider = cameraProviderFuture.get()
             bindPreview(cameraProvider)
         }, ContextCompat.getMainExecutor(requireContext()))
-
         imageCaptureBuilder = ImageCapture.Builder()
-            //.setTargetResolution(Size(displayWidth, displayHeight))
+            //.setTargetResolution(resolution!!)
             .setCaptureMode(CAPTURE_MODE_MAXIMIZE_QUALITY)
             .build()
+
    val mCameraManager  = requireActivity().getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val resItems :  MutableList<String> = ArrayList()
+        val resItems :  MutableList<Size> = ArrayList()
 
         try {
             // Получение списка камер с устройства
@@ -167,7 +174,8 @@ class FirstFragment : Fragment() {
                     val sizesJPEG: Array<Size>? = configurationMap!!.getOutputSizes(ImageFormat.JPEG)
                     if (sizesJPEG != null) {
                         for (item in sizesJPEG) {
-                            resItems.add("w:" + item.width.toString() + " h:" + item.height)
+                            //resItems.add("w:" + item.width.toString() + " h:" + item.height)
+                            resItems.add(Size( item.width,item.height))
                         }
                     }
                 }
@@ -178,8 +186,32 @@ class FirstFragment : Fragment() {
         }
 
 
-        spinnerItem.adapter = ArrayAdapter(requireContext(),  R.layout.drop_list_item , resItems)
+        spinnerItem.adapter = ArrayAdapter(requireContext(),  com.example.mlkitsample.R.layout.drop_list_item , resItems)
 
+
+        spinnerItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            @SuppressLint("RestrictedApi")
+            override fun onItemSelected(
+                parent: AdapterView<*>,
+                view: View,
+                position: Int,
+                id: Long
+            ) {
+                resolution = resItems[position]
+                imageCaptureBuilder = ImageCapture.Builder()
+                    .setTargetResolution(resolution!!)
+                    .build()
+                cameraProvider.bindToLifecycle(
+                    this as LifecycleOwner,
+                    cameraSelector!!,
+                    imageCaptureBuilder,
+                    preview)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>) {
+                // Code to perform some action when nothing is selected
+            }
+        }
 
 
     }
@@ -187,16 +219,14 @@ class FirstFragment : Fragment() {
     private fun bindPreview(cameraProvider: ProcessCameraProvider) {
 
         preview = Preview.Builder()
-            //.setTargetResolution(Size(displayWidth, displayHeight)) ///2120  1080 ))
+           // .setTargetResolution(resolution!!)
             .build()
-        val cameraSelector: CameraSelector = CameraSelector.Builder()
-            .requireLensFacing(lensFacing)
-            .build()
+
         preview.setSurfaceProvider(surfaceViewCamera.surfaceProvider)
 
         cameraProvider.bindToLifecycle(
             this as LifecycleOwner,
-            cameraSelector,
+            cameraSelector!!,
             imageCaptureBuilder,
             preview
         )
